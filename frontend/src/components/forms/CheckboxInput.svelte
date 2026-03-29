@@ -35,12 +35,16 @@
     justify-content: start;
     cursor: pointer;
     width: max-content;
+    position: relative;
+    overflow: hidden;
   }
   
   label {
     cursor: pointer;
     width: max-content;
     user-select: none;
+    position: relative;
+    overflow: hidden;
   }
 </style>
 

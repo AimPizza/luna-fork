@@ -127,6 +127,7 @@
       name: name,
       type: inputType === "google" ? "google" : urlType,
       auth_type: inputType === "google" ? "oauth" : (needAuth ? authType : "none"),
+      insecure: false,
       auth: (needAuth && authType != "none") || inputType === "google" ? auth : {},
       settings: {},
       can_add_calendars: false

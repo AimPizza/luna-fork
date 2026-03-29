@@ -15,21 +15,22 @@ import (
 
 // Implements types.File
 type RemoteFile struct {
-	url     *types.Url
-	date    *time.Time
-	content []byte
-	accept  string
-	auth    types.AuthMethod
+	url      *types.Url
+	date     *time.Time
+	content  []byte
+	accept   string
+	insecure bool
+	auth     types.AuthMethod
 }
 
-func GetRemoteFile(url *types.Url, accept string, auth types.AuthMethod) *RemoteFile {
-	return &RemoteFile{url: url, accept: accept, auth: auth}
+func GetRemoteFile(url *types.Url, accept string, auth types.AuthMethod, insecure bool) *RemoteFile {
+	return &RemoteFile{url: url, accept: accept, auth: auth, insecure: insecure}
 }
 
-func NewRemoteFile(url *types.Url, accept string, auth types.AuthMethod, user types.ID, q types.DatabaseQueries) (*RemoteFile, *errors.ErrorTrace) {
-	file := &RemoteFile{url: url, accept: accept, auth: auth}
+func NewRemoteFile(url *types.Url, accept string, auth types.AuthMethod, insecure bool, user types.ID, q types.DatabaseQueries) (*RemoteFile, *errors.ErrorTrace) {
+	file := &RemoteFile{url: url, accept: accept, auth: auth, insecure: insecure}
 
-	content, err := net.FetchFile(file.url, file.auth, file.accept, q.GetContext())
+	content, err := net.FetchFile(file.url, file.auth, file.insecure, file.accept, q.GetContext())
 	if err != nil {
 		return nil, err.
 			Append(errors.LvlDebug, "Could not read from remote").
@@ -54,7 +55,7 @@ func (file *RemoteFile) GetName(_ types.DatabaseQueries) string {
 }
 
 func (file *RemoteFile) fetchContentFromRemote(q types.DatabaseQueries) (io.Reader, *errors.ErrorTrace) {
-	content, err := net.FetchFile(file.url, file.auth, file.accept, q.GetContext())
+	content, err := net.FetchFile(file.url, file.auth, file.insecure, file.accept, q.GetContext())
 	if err != nil {
 		return nil, err.
 			Append(errors.LvlDebug, "Could not read from remote").
@@ -84,6 +85,7 @@ func (file *RemoteFile) fetchContentFromDatabase(q types.DatabaseQueries) (io.Re
 	return content, date, nil
 }
 
+// TODO: fix SIGSEV
 func (file *RemoteFile) GetContent(q types.DatabaseQueries) (io.Reader, *errors.ErrorTrace) {
 	curTime := time.Now()
 

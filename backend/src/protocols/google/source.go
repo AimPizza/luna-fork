@@ -134,6 +134,10 @@ func (source *GoogleSource) GetAuth() types.AuthMethod {
 	return source.auth
 }
 
+func (source *GoogleSource) GetInsecure() bool {
+	return false
+}
+
 func (source *GoogleSource) GetSettings() types.SourceSettings {
 	return source.settings
 }

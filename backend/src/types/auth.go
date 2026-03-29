@@ -10,10 +10,10 @@ type HttpClientInterface interface {
 }
 
 type AuthMethod interface {
-	Do(req *http.Request) (*http.Response, *errors.ErrorTrace)
+	Do(req *http.Request, insecure bool) (*http.Response, *errors.ErrorTrace)
 	GetType() string
 	String() (string, error)
-	HttpClient() HttpClientInterface
+	HttpClient(insecure bool) HttpClientInterface
 }
 
 type PasswordEntry struct {

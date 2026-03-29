@@ -14,6 +14,7 @@ export const EmptySource: SourceModel = {
     password: '',
     token: '',
   },
+  insecure: false,
   can_add_calendars: false
 }
 
@@ -21,14 +22,16 @@ export const AllChangesSource: SourceModelChanges = {
   name: true,
   type: true,
   settings: true,
-  auth: true
+  auth: true,
+  insecure: true
 }
 
 export const NoChangesSource: SourceModelChanges = {
   name: false,
   type: false,
   settings: false,
-  auth: false
+  auth: false,
+  insecure: false
 }
 
 export const EmptyCalendar: CalendarModel = {

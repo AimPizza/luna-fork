@@ -13,7 +13,7 @@ import (
 	"net/url"
 )
 
-func FetchFile(url *types.Url, auth types.AuthMethod, accept string, ctx context.Context) (io.Reader, *errors.ErrorTrace) {
+func FetchFile(url *types.Url, auth types.AuthMethod, insecure bool, accept string, ctx context.Context) (io.Reader, *errors.ErrorTrace) {
 	req, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		return nil, errors.New().Status(http.StatusInternalServerError).
@@ -26,7 +26,7 @@ func FetchFile(url *types.Url, auth types.AuthMethod, accept string, ctx context
 	req.Header.Set("Accept", accept)
 	req = req.WithContext(ctx)
 
-	res, tr := auth.Do(req)
+	res, tr := auth.Do(req, insecure)
 	if tr != nil {
 		return nil, errors.InterpretRemoteError(tr, "file", "remote file").
 			Append(errors.LvlDebug, "Could not fulfill request").
@@ -113,7 +113,7 @@ func FetchBytes(
 	req = req.WithContext(ctx)
 
 	// Get response
-	res, tr := auth.Do(req)
+	res, tr := auth.Do(req, false)
 	if tr != nil {
 		return nil, errors.InterpretRemoteError(tr, "object", "object").
 			Append(errors.LvlDebug, "Could not fulfill request").

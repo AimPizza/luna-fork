@@ -63,14 +63,26 @@ func CheckUrl(c *gin.Context) {
 		u.Error(errors.New().Status(http.StatusBadRequest).
 			AddErr(errors.LvlDebug, err).
 			Append(errors.LvlPlain, "Invalid url"))
+		return
 	}
 
-	authResponse, authTr := checkUrlWithAuth(u, url, authMethod)
+	rawInsecure, tr := parseOptionalInsecure(c)
+	if tr != nil {
+		u.Error(tr)
+		return
+	}
+
+	insecure := false
+	if rawInsecure != nil {
+		insecure = *rawInsecure
+	}
+
+	authResponse, authTr := checkUrlWithAuth(u, url, authMethod, insecure)
 	var noAuthResponse *gin.H
 	var noAuthTr *errors.ErrorTrace
 
 	if authMethod.GetType() != constants.AuthNone {
-		noAuthResponse, noAuthTr = checkUrlWithAuth(u, url, auth.NewNoAuth())
+		noAuthResponse, noAuthTr = checkUrlWithAuth(u, url, auth.NewNoAuth(), insecure)
 	} else {
 		noAuthResponse, noAuthTr = authResponse, authTr
 	}
@@ -93,8 +105,8 @@ func CheckUrl(c *gin.Context) {
 	}
 }
 
-func checkUrlWithAuth(u *util.HandlerUtility, url *types.Url, auth types.AuthMethod) (*gin.H, *errors.ErrorTrace) {
-	isIcal, tr, statusCode := isUrlIcal(u, url, auth)
+func checkUrlWithAuth(u *util.HandlerUtility, url *types.Url, auth types.AuthMethod, insecure bool) (*gin.H, *errors.ErrorTrace) {
+	isIcal, tr, statusCode := isUrlIcal(u, url, auth, insecure)
 	if tr != nil {
 		return nil, tr
 	}
@@ -112,7 +124,7 @@ func checkUrlWithAuth(u *util.HandlerUtility, url *types.Url, auth types.AuthMet
 		}, nil
 	}
 
-	isCaldav, tr, principalUrl := isUrlCaldav(u, url, auth)
+	isCaldav, tr, principalUrl := isUrlCaldav(u, url, auth, insecure)
 	if tr != nil {
 		if strings.Contains(tr.Serialize(errors.LvlDebug), "401 Unauthorized") {
 			statusCode = http.StatusUnauthorized
@@ -142,7 +154,7 @@ func checkUrlWithAuth(u *util.HandlerUtility, url *types.Url, auth types.AuthMet
 	}, nil
 }
 
-func isUrlIcal(u *util.HandlerUtility, url *types.Url, auth types.AuthMethod) (bool, *errors.ErrorTrace, int) {
+func isUrlIcal(u *util.HandlerUtility, url *types.Url, auth types.AuthMethod, insecure bool) (bool, *errors.ErrorTrace, int) {
 	req, err := http.NewRequest("GET", url.String(), nil)
 	if err != nil {
 		return false, errors.New().Status(http.StatusInternalServerError).
@@ -155,7 +167,7 @@ func isUrlIcal(u *util.HandlerUtility, url *types.Url, auth types.AuthMethod) (b
 	req.Header.Set("Accept", "text/calendar")
 	req = req.WithContext(u.Context)
 
-	res, tr := auth.Do(req)
+	res, tr := auth.Do(req, insecure)
 	if tr != nil {
 		return false, tr.Status(http.StatusInternalServerError).
 			AddErr(errors.LvlDebug, err).
@@ -170,9 +182,9 @@ func isUrlIcal(u *util.HandlerUtility, url *types.Url, auth types.AuthMethod) (b
 	return tr == nil, nil, http.StatusOK
 }
 
-func isUrlCaldav(u *util.HandlerUtility, url *types.Url, auth types.AuthMethod) (bool, *errors.ErrorTrace, string) {
+func isUrlCaldav(u *util.HandlerUtility, url *types.Url, auth types.AuthMethod, insecure bool) (bool, *errors.ErrorTrace, string) {
 	client, err := caldav.NewClient(
-		auth.HttpClient(),
+		auth.HttpClient(insecure),
 		url.String(),
 	)
 	if err != nil {

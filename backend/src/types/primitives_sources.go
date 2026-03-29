@@ -10,6 +10,7 @@ type Source interface {
 	GetId() ID
 	GetName() string
 	GetAuth() AuthMethod
+	GetInsecure() bool
 
 	CanAddCalendars() bool
 

@@ -26,6 +26,7 @@ type IcalSourceSettings struct {
 	Url          *types.Url     `json:"url"`  // for Location == "remote"
 	Path         *types.Path    `json:"path"` // for Location == "local"
 	FileId       types.ID       `json:"file"` // for Location == "database"
+	Insecure     bool           `json:"insecure"`
 	file         types.File     `json:"-"`
 	icalCalendar *ical.Calendar `json:"-"`
 }
@@ -77,6 +78,13 @@ func (source *IcalSource) GetAuth() types.AuthMethod {
 	return source.auth
 }
 
+func (source *IcalSource) GetInsecure() bool {
+	if source.settings.Location != "remote" {
+		return false
+	}
+	return source.settings.Insecure
+}
+
 func (source *IcalSource) GetSettings() types.SourceSettings {
 	return source.settings
 }
@@ -85,8 +93,8 @@ func (source *IcalSource) CanAddCalendars() bool {
 	return false
 }
 
-func NewRemoteIcalSource(name string, url *types.Url, auth types.AuthMethod, user types.ID, q types.DatabaseQueries) (*IcalSource, *errors.ErrorTrace) {
-	file, err := files.NewRemoteFile(url, "text/calendar", auth, user, q)
+func NewRemoteIcalSource(name string, url *types.Url, auth types.AuthMethod, insecure bool, user types.ID, q types.DatabaseQueries) (*IcalSource, *errors.ErrorTrace) {
+	file, err := files.NewRemoteFile(url, "text/calendar", auth, insecure, user, q)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +106,7 @@ func NewRemoteIcalSource(name string, url *types.Url, auth types.AuthMethod, use
 		settings: &IcalSourceSettings{
 			Location: "remote",
 			Url:      url,
+			Insecure: insecure,
 			file:     file,
 		},
 	}, nil
@@ -116,6 +125,7 @@ func NewDatabaseIcalSource(name string, fileName string, content io.Reader, user
 		settings: &IcalSourceSettings{
 			Location: "database",
 			FileId:   file.GetId(),
+			Insecure: false,
 			file:     file,
 		},
 	}, nil
@@ -129,6 +139,7 @@ func NewLocalIcalSource(name string, path *types.Path) *IcalSource {
 		settings: &IcalSourceSettings{
 			Location: "local",
 			Path:     path,
+			Insecure: false,
 			file:     files.NewLocalFile(path),
 		},
 	}
@@ -137,7 +148,7 @@ func NewLocalIcalSource(name string, path *types.Path) *IcalSource {
 func PackIcalSource(id types.ID, name string, settings *IcalSourceSettings, auth types.AuthMethod) (*IcalSource, *errors.ErrorTrace) {
 	switch settings.Location {
 	case "remote":
-		settings.file = files.GetRemoteFile(settings.Url, "text/calendar", auth)
+		settings.file = files.GetRemoteFile(settings.Url, "text/calendar", auth, settings.Insecure)
 	case "local":
 		settings.file = files.GetLocalFile(settings.Path)
 	case "database":

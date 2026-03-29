@@ -33,6 +33,7 @@ type exposedDetailedSource struct {
 	Settings        any      `json:"settings"`
 	AuthType        string   `json:"auth_type"`
 	Auth            any      `json:"auth"`
+	Insecure        bool     `json:"insecure"`
 	CanAddCalendars bool     `json:"can_add_calendars"`
 }
 
@@ -95,6 +96,7 @@ func GetSource(c *gin.Context) {
 		Type:            source.GetType(),
 		AuthType:        source.GetAuth().GetType(),
 		Auth:            source.GetAuth(),
+		Insecure:        source.GetInsecure(),
 		CanAddCalendars: source.CanAddCalendars(),
 	}
 
@@ -167,7 +169,34 @@ func parseAuthMethod(c *gin.Context) (types.AuthMethod, *errors.ErrorTrace) {
 	return sourceAuth, nil
 }
 
-func parseSource(c *gin.Context, sourceName string, sourceAuth types.AuthMethod, user types.ID, q types.DatabaseQueries, ctx context.Context) (types.Source, *errors.ErrorTrace) {
+func parseInsecure(c *gin.Context) (bool, *errors.ErrorTrace) {
+	rawInsecure := c.PostForm("insecure")
+	switch rawInsecure {
+	case "", "false":
+		return false, nil
+	case "true":
+		return true, nil
+	default:
+		return false, errors.New().Status(http.StatusBadRequest).
+			Append(errors.LvlPlain, "Malformed insecure flag")
+	}
+}
+
+func parseOptionalInsecure(c *gin.Context) (*bool, *errors.ErrorTrace) {
+	rawInsecure := c.PostForm("insecure")
+	if rawInsecure == "" {
+		return nil, nil
+	}
+
+	insecure, tr := parseInsecure(c)
+	if tr != nil {
+		return nil, tr
+	}
+
+	return &insecure, nil
+}
+
+func parseSource(c *gin.Context, sourceName string, sourceAuth types.AuthMethod, insecure bool, user types.ID, q types.DatabaseQueries, ctx context.Context) (types.Source, *errors.ErrorTrace) {
 	var tr *errors.ErrorTrace
 	var source types.Source
 
@@ -190,7 +219,7 @@ func parseSource(c *gin.Context, sourceName string, sourceAuth types.AuthMethod,
 				Append(errors.LvlPlain, "Invalid CalDAV url")
 		}
 
-		source = caldav.NewCaldavSource(sourceName, sourceUrl, sourceAuth)
+		source = caldav.NewCaldavSource(sourceName, sourceUrl, sourceAuth, insecure)
 		source.SupplyContext(ctx)
 
 	case constants.SourceIcal:
@@ -217,7 +246,7 @@ func parseSource(c *gin.Context, sourceName string, sourceAuth types.AuthMethod,
 					AddErr(errors.LvlDebug, err).
 					Append(errors.LvlPlain, "Invalid iCal url")
 			}
-			source, tr = ical.NewRemoteIcalSource(sourceName, sourceUrl, sourceAuth, user, q)
+			source, tr = ical.NewRemoteIcalSource(sourceName, sourceUrl, sourceAuth, insecure, user, q)
 			if tr != nil {
 				return nil, tr
 			}
@@ -292,6 +321,44 @@ func parseSource(c *gin.Context, sourceName string, sourceAuth types.AuthMethod,
 	return source, nil
 }
 
+func settingsWithUpdatedInsecure(source types.Source, insecure bool) (string, types.SourceSettings, *errors.ErrorTrace) {
+	switch source.GetType() {
+	case constants.SourceCaldav:
+		settings, ok := source.GetSettings().(*caldav.CaldavSourceSettings)
+		if !ok {
+			return "", nil, errors.New().Status(http.StatusInternalServerError).
+				Append(errors.LvlWordy, "Could not parse CalDAV source settings")
+		}
+
+		return constants.SourceCaldav, &caldav.CaldavSourceSettings{
+			Url:      settings.Url,
+			Insecure: insecure,
+		}, nil
+	case constants.SourceIcal:
+		settings, ok := source.GetSettings().(*ical.IcalSourceSettings)
+		if !ok {
+			return "", nil, errors.New().Status(http.StatusInternalServerError).
+				Append(errors.LvlWordy, "Could not parse iCal source settings")
+		}
+
+		if settings.Location != "remote" {
+			return "", nil, errors.New().Status(http.StatusBadRequest).
+				Append(errors.LvlPlain, "Only remote iCal sources support insecure mode")
+		}
+
+		return constants.SourceIcal, &ical.IcalSourceSettings{
+			Location: settings.Location,
+			Url:      settings.Url,
+			Path:     settings.Path,
+			FileId:   settings.FileId,
+			Insecure: insecure,
+		}, nil
+	default:
+		return "", nil, errors.New().Status(http.StatusBadRequest).
+			Append(errors.LvlPlain, "Source type does not support insecure mode")
+	}
+}
+
 func PutSource(c *gin.Context) {
 	u := util.GetUtil(c)
 
@@ -310,7 +377,13 @@ func PutSource(c *gin.Context) {
 		return
 	}
 
-	source, err := parseSource(c, sourceName, sourceAuth, userId, u.Tx.Queries(), u.Context)
+	sourceInsecure, err := parseInsecure(c)
+	if err != nil {
+		u.Error(err)
+		return
+	}
+
+	source, err := parseSource(c, sourceName, sourceAuth, sourceInsecure, userId, u.Tx.Queries(), u.Context)
 	if err != nil {
 		u.Error(err)
 		return
@@ -340,7 +413,13 @@ func PatchSource(c *gin.Context) {
 	newType := c.PostForm("type")
 	newAuthType := c.PostForm("auth_type")
 
-	if newName == "" && newType == "" && newAuthType == "" {
+	newInsecure, tr := parseOptionalInsecure(c)
+	if tr != nil {
+		u.Error(tr)
+		return
+	}
+
+	if newName == "" && newType == "" && newAuthType == "" && newInsecure == nil {
 		u.Error(errors.New().Status(http.StatusBadRequest).
 			Append(errors.LvlPlain, "Nothing to change"))
 		return
@@ -361,17 +440,28 @@ func PatchSource(c *gin.Context) {
 		}
 	}
 
+	effectiveInsecure := source.GetInsecure()
+	if newInsecure != nil {
+		effectiveInsecure = *newInsecure
+	}
+
 	var newSourceSettings types.SourceSettings = nil
 	if newType != "" {
 		if newAuth == nil {
 			newAuth = source.GetAuth()
 		}
-		newSource, err := parseSource(c, newName, newAuth, userId, u.Tx.Queries(), u.Context)
+		newSource, err := parseSource(c, newName, newAuth, effectiveInsecure, userId, u.Tx.Queries(), u.Context)
 		if err != nil {
 			u.Error(err)
 			return
 		}
 		newSourceSettings = newSource.GetSettings()
+	} else if newInsecure != nil {
+		newType, newSourceSettings, err = settingsWithUpdatedInsecure(source, *newInsecure)
+		if err != nil {
+			u.Error(err)
+			return
+		}
 	}
 	if source.GetType() == constants.SourceIcal {
 		if newType == constants.SourceIcal {

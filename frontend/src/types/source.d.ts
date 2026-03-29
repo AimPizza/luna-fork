@@ -4,6 +4,7 @@ type SourceModel = {
   type: string;
   settings: {[key: string]: any};
   auth_type: string;
+  insecure: boolean;
   auth: {[key: string]: any};
   can_add_calendars: boolean;
 }
@@ -13,4 +14,5 @@ type SourceModelChanges = {
   type: boolean;
   settings: boolean;
   auth: boolean;
+  insecure: boolean;
 }

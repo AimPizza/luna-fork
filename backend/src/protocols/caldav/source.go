@@ -23,7 +23,8 @@ type CaldavSource struct {
 }
 
 type CaldavSourceSettings struct {
-	Url *types.Url `json:"url"`
+	Url      *types.Url `json:"url"`
+	Insecure bool       `json:"insecure"`
 }
 
 func (settings *CaldavSourceSettings) GetBytes() []byte {
@@ -50,6 +51,10 @@ func (source *CaldavSource) GetAuth() types.AuthMethod {
 	return source.auth
 }
 
+func (source *CaldavSource) GetInsecure() bool {
+	return source.settings.Insecure
+}
+
 func (source *CaldavSource) GetSettings() types.SourceSettings {
 	return source.settings
 }
@@ -58,13 +63,14 @@ func (source *CaldavSource) CanAddCalendars() bool {
 	return true
 }
 
-func NewCaldavSource(name string, url *types.Url, auth types.AuthMethod) *CaldavSource {
+func NewCaldavSource(name string, url *types.Url, auth types.AuthMethod, insecure bool) *CaldavSource {
 	return &CaldavSource{
 		id:   types.EmptyId(), // Placeholder until the database assigns an ID
 		name: name,
 		auth: auth,
 		settings: &CaldavSourceSettings{
-			Url: url,
+			Url:      url,
+			Insecure: insecure,
 		},
 	}
 }
@@ -82,7 +88,7 @@ func (source *CaldavSource) getClient() (*caldav.Client, *errors.ErrorTrace) {
 	if source.client == nil {
 		var err error
 		source.client, err = caldav.NewClient(
-			source.auth.HttpClient(),
+			source.auth.HttpClient(source.GetInsecure()),
 			source.settings.Url.URL().String(),
 		)
 

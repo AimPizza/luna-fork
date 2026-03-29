@@ -251,7 +251,7 @@ func PatchUserData(c *gin.Context) {
 
 		// Create local profile picture cache
 		if newProfilePictureType == constants.ProfilePictureGravatar || newProfilePictureType == constants.ProfilePictureRemote {
-			pfpFile, tr := files.NewRemoteFile(newProfilePictureUrl, "image/*", auth.NewNoAuth(), userId, u.Tx.Queries())
+			pfpFile, tr := files.NewRemoteFile(newProfilePictureUrl, "image/*", auth.NewNoAuth(), false, userId, u.Tx.Queries())
 			if tr != nil {
 				u.Error(tr.
 					Append(errors.LvlDebug, "Could not create remote file for profile picture").

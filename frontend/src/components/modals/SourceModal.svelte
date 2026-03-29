@@ -20,6 +20,7 @@
   import OauthTokensModal from "./OauthTokensModal.svelte";
   import Horizontal from "../layout/Horizontal.svelte";
   import Link from "../forms/Link.svelte";
+  import CheckboxInput from "../forms/CheckboxInput.svelte";
 
   interface Props {
     showCreateModal?: () => Promise<SourceModel>;
@@ -56,6 +57,7 @@
         fileId: "",
       },
       auth_type: "none",
+      insecure: false,
       auth: {},
       can_add_calendars: true,
     };
@@ -132,7 +134,8 @@
         name: sourceDetailed.name != originalSource.name,
         type: sourceDetailed.type != originalSource.type || !deepEquality(sourceDetailed.settings, originalSource.settings),
         settings: !deepEquality(sourceDetailed.settings, originalSource.settings),
-        auth: sourceDetailed.auth_type != originalSource.auth_type || !deepEquality(sourceDetailed.auth, originalSource.auth)
+        auth: sourceDetailed.auth_type != originalSource.auth_type || !deepEquality(sourceDetailed.auth, originalSource.auth),
+        insecure: sourceDetailed.insecure != originalSource.insecure,
       }
       await getRepository().editSource(sourceDetailed, changes).catch(err => {
         promiseReject();
@@ -315,6 +318,9 @@
       {/if}
     {/if}
 
+    {#if (sourceDetailed.type === "ical" || sourceDetailed.type === "caldav")}
+      <CheckboxInput bind:value={sourceDetailed.insecure} name="insecure" description="Trust a potentially unsafe certificate" />
+    {/if}
     {#if sourceDetailed.id && settings.userSettings[UserSettingKeys.DebugMode]}
       <TextInput value={sourceDetailed.id} name="id" placeholder="Source ID" editable={false} />
     {/if}

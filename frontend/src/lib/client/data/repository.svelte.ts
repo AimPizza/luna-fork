@@ -116,6 +116,7 @@ export class Repository {
     const formData = new FormData();
     if (changes.name) formData.set("name", source.name);
     if (changes.type) formData.set("type", source.type);
+    if (changes.insecure) formData.set("insecure", source.insecure ? "true" : "false");
     if (changes.type || changes.settings) {
       switch (source.type) {
         case "caldav":
@@ -394,7 +395,7 @@ export class Repository {
     if (detailsCacheEntry) detailsCacheEntry.value = modifiedSource;
     this.compileSources();
 
-    if (changes.settings) {
+    if (changes.settings || changes.insecure) {
       for (const calendar of this.calendarsCache.get(modifiedSource.id)?.value || []) {
         this.eventsCache.delete(calendar);
         this.calendarsMap.delete(calendar);

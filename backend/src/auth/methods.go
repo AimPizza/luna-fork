@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"luna-backend/config"
@@ -16,12 +17,43 @@ import (
 
 // Wrapper
 
+func createHttpClient(insecure bool) *http.Client {
+	defaultTransport, ok := http.DefaultTransport.(*http.Transport)
+	if !ok {
+		return &http.Client{}
+	}
+
+	transport := defaultTransport.Clone()
+
+	tlsConfig := transport.TLSClientConfig
+	if tlsConfig != nil {
+		tlsConfig = tlsConfig.Clone()
+	} else {
+		tlsConfig = &tls.Config{}
+	}
+
+	tlsConfig.InsecureSkipVerify = insecure
+	transport.TLSClientConfig = tlsConfig
+
+	return &http.Client{Transport: transport}
+}
+
+var secureHttpClient = createHttpClient(false)
+
+func getHttpClient(insecure bool) *http.Client {
+	if insecure {
+		return createHttpClient(true)
+	}
+	return secureHttpClient
+}
+
 type httpClient struct {
-	auth types.AuthMethod
+	auth     types.AuthMethod
+	insecure bool
 }
 
 func (httpClient *httpClient) Do(req *http.Request) (*http.Response, error) {
-	res, tr := httpClient.auth.Do(req)
+	res, tr := httpClient.auth.Do(req, httpClient.insecure)
 	if tr != nil {
 		return nil, tr.SerializeError(errors.LvlDebug)
 	}
@@ -32,8 +64,8 @@ func (httpClient *httpClient) Do(req *http.Request) (*http.Response, error) {
 
 type NoAuth struct{}
 
-func (auth NoAuth) Do(req *http.Request) (*http.Response, *errors.ErrorTrace) {
-	res, err := http.DefaultClient.Do(req)
+func (auth NoAuth) Do(req *http.Request, insecure bool) (*http.Response, *errors.ErrorTrace) {
+	res, err := getHttpClient(insecure).Do(req)
 	if err != nil {
 		return nil, errors.New().AddErr(errors.LvlDebug, err)
 	}
@@ -48,8 +80,8 @@ func (auth NoAuth) String() (string, error) {
 	return "", nil
 }
 
-func (auth NoAuth) HttpClient() types.HttpClientInterface {
-	return &httpClient{auth: auth}
+func (auth NoAuth) HttpClient(insecure bool) types.HttpClientInterface {
+	return &httpClient{auth: auth, insecure: insecure}
 }
 
 func NewNoAuth() types.AuthMethod {
@@ -63,9 +95,9 @@ type BasicAuth struct {
 	Password string `json:"password" form:"password"`
 }
 
-func (auth BasicAuth) Do(req *http.Request) (*http.Response, *errors.ErrorTrace) {
+func (auth BasicAuth) Do(req *http.Request, insecure bool) (*http.Response, *errors.ErrorTrace) {
 	req.SetBasicAuth(auth.Username, auth.Password)
-	res, err := http.DefaultClient.Do(req)
+	res, err := getHttpClient(insecure).Do(req)
 	if err != nil {
 		return nil, errors.New().AddErr(errors.LvlDebug, err)
 	}
@@ -84,8 +116,8 @@ func (auth BasicAuth) String() (string, error) {
 	return string(bytes), nil
 }
 
-func (auth BasicAuth) HttpClient() types.HttpClientInterface {
-	return &httpClient{auth: auth}
+func (auth BasicAuth) HttpClient(insecure bool) types.HttpClientInterface {
+	return &httpClient{auth: auth, insecure: insecure}
 }
 
 func NewBasicAuth(username, password string) types.AuthMethod {
@@ -98,9 +130,9 @@ type BearerAuth struct {
 	Token string `json:"token" form:"token"`
 }
 
-func (auth BearerAuth) Do(req *http.Request) (*http.Response, *errors.ErrorTrace) {
+func (auth BearerAuth) Do(req *http.Request, insecure bool) (*http.Response, *errors.ErrorTrace) {
 	req.Header.Set("Authorization", "Bearer "+auth.Token)
-	res, err := http.DefaultClient.Do(req)
+	res, err := getHttpClient(insecure).Do(req)
 	if err != nil {
 		return nil, errors.New().AddErr(errors.LvlDebug, err)
 	}
@@ -119,8 +151,8 @@ func (auth BearerAuth) String() (string, error) {
 	return string(bytes), nil
 }
 
-func (auth BearerAuth) HttpClient() types.HttpClientInterface {
-	return &httpClient{auth: auth}
+func (auth BearerAuth) HttpClient(insecure bool) types.HttpClientInterface {
+	return &httpClient{auth: auth, insecure: insecure}
 }
 
 func NewBearerAuth(token string) types.AuthMethod {
@@ -161,7 +193,7 @@ func (auth *OauthAuth) expired() *errors.ErrorTrace {
 		Append(errors.LvlPlain, "Please authorize yourself again")
 }
 
-func (auth *OauthAuth) Do(req *http.Request) (*http.Response, *errors.ErrorTrace) {
+func (auth *OauthAuth) Do(req *http.Request, insecure bool) (*http.Response, *errors.ErrorTrace) {
 	var tr *errors.ErrorTrace
 
 	if auth.client == nil {
@@ -205,7 +237,7 @@ func (auth *OauthAuth) Do(req *http.Request) (*http.Response, *errors.ErrorTrace
 	}
 
 	req.Header.Set("Authorization", "Bearer "+tokens.AccessToken)
-	res, err := http.DefaultClient.Do(req)
+	res, err := getHttpClient(insecure).Do(req)
 	if err != nil {
 		if strings.Contains(err.Error(), "invalid_grant") {
 			return nil, auth.expired()
@@ -227,8 +259,8 @@ func (auth *OauthAuth) String() (string, error) {
 	return string(bytes), nil
 }
 
-func (auth *OauthAuth) HttpClient() types.HttpClientInterface {
-	return &httpClient{auth: auth}
+func (auth *OauthAuth) HttpClient(insecure bool) types.HttpClientInterface {
+	return &httpClient{auth: auth, insecure: insecure}
 }
 
 func NewOauthAuth(tokensId types.ID, clientId types.ID, userId types.ID) types.AuthMethod {
